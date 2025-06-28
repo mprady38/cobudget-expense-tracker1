@@ -14,91 +14,145 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-    
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
     
-    - name: Install dependencies
-      run: npm ci
-    
-    - name: Create minimal Android project
+    - name: Create basic Android project
       run: |
-        mkdir -p dist
-        cat > dist/index.html << 'EOF'
-        <!DOCTYPE html>
-        <html lang="en">
-          <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-            <title>CoBudget - Expense Tracker</title>
-            <style>
-              body { 
-                margin: 0; 
-                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-              }
-              .container { 
-                display: flex; 
-                justify-content: center; 
-                align-items: center; 
-                height: 100vh;
-                flex-direction: column;
-                text-align: center;
-                padding: 20px;
-              }
-              .logo {
-                font-size: 2.5em;
-                font-weight: bold;
-                margin-bottom: 20px;
-              }
-              .loading {
-                font-size: 1.2em;
-                margin-bottom: 30px;
-              }
+        mkdir -p android/app/src/main/java/com/cobudget/app
+        mkdir -p android/app/src/main/res/values
+        mkdir -p android/gradle/wrapper
+        
+        # AndroidManifest.xml
+        cat > android/app/src/main/AndroidManifest.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.cobudget.app">
+            
+            <uses-permission android:name="android.permission.INTERNET" />
+            
+            <application
+                android:label="CoBudget"
+                android:theme="@style/AppTheme">
+                
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+        
+        # MainActivity.java
+        cat > android/app/src/main/java/com/cobudget/app/MainActivity.java << 'EOF'
+        package com.cobudget.app;
+        
+        import android.os.Bundle;
+        import android.webkit.WebView;
+        import android.webkit.WebViewClient;
+        import androidx.appcompat.app.AppCompatActivity;
+        
+        public class MainActivity extends AppCompatActivity {
+            @Override
+            protected void onCreate(Bundle savedInstanceState) {
+                super.onCreate(savedInstanceState);
+                
+                WebView webView = new WebView(this);
+                webView.getSettings().setJavaScriptEnabled(true);
+                webView.setWebViewClient(new WebViewClient());
+                webView.loadUrl("https://cobudget.replit.app");
+                
+                setContentView(webView);
+            }
+        }
+        EOF
+        
+        # styles.xml
+        cat > android/app/src/main/res/values/styles.xml << 'EOF'
+        <resources>
+            <style name="AppTheme" parent="Theme.AppCompat.Light">
+                <item name="colorPrimary">#667eea</item>
             </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="logo">💰 CoBudget</div>
-              <div class="loading">Loading your expense tracker...</div>
-            </div>
-            <script>
-              setTimeout(() => {
-                window.location.href = 'https://cobudget.replit.app';
-              }, 3000);
-            </script>
-          </body>
-        </html>
+        </resources>
+        EOF
+        
+        # strings.xml
+        cat > android/app/src/main/res/values/strings.xml << 'EOF'
+        <resources>
+            <string name="app_name">CoBudget</string>
+        </resources>
+        EOF
+        
+        # app/build.gradle
+        cat > android/app/build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application'
+        }
+        
+        android {
+            compileSdk 34
+            defaultConfig {
+                applicationId "com.cobudget.app"
+                minSdk 22
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+        }
+        
+        dependencies {
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+        }
+        EOF
+        
+        # root build.gradle
+        cat > android/build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application' version '8.1.0' apply false
+        }
+        EOF
+        
+        # gradle.properties
+        cat > android/gradle.properties << 'EOF'
+        android.useAndroidX=true
+        EOF
+        
+        # settings.gradle
+        cat > android/settings.gradle << 'EOF'
+        include ':app'
+        EOF
+        
+        # gradle-wrapper.properties
+        cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
+        distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-bin.zip
         EOF
     
-    - name: Initialize Capacitor project
-      run: |
-        npx @capacitor/cli@latest create cobudget-app com.cobudget.app --web-dir=dist
-        cp -r cobudget-app/android ./
-        rm -rf cobudget-app
-    
-    - name: Sync Capacitor
-      run: npx cap sync android
-    
-    - name: Fix gradlew permissions
-      run: chmod +x android/gradlew
-    
-    - name: Build Android APK
+    - name: Download Gradle wrapper
       run: |
         cd android
-        ./gradlew assembleDebug --no-daemon --stacktrace
+        curl -L -o gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v8.0.0/gradle/wrapper/gradle-wrapper.jar
+        
+        cat > gradlew << 'EOF'
+        #!/bin/sh
+        exec java -jar gradle/wrapper/gradle-wrapper.jar "$@"
+        EOF
+        
+        chmod +x gradlew
+    
+    - name: Build APK
+      run: |
+        cd android
+        ./gradlew assembleDebug --no-daemon
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: cobudget-debug-apk
+        name: cobudget-apk
         path: android/app/build/outputs/apk/debug/app-debug.apk
